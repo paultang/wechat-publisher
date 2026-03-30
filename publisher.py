@@ -364,8 +364,44 @@ class WeChatPublisher:
         """
         lines = markdown.split('\n')
         html_parts = []
-        
+
+# --- 新增模块变量：状态追踪 ---
+        in_code_block = False
+        code_content = []
+# --------------------------
         for line in lines:
+            # --- 新增逻辑：代码块优先拦截 ---
+            stripped_line = line.strip()
+            if stripped_line.startswith('```'):
+                if not in_code_block:
+                    in_code_block = True
+                    continue
+                else:
+                    in_code_block = False
+                    # 封装为 MacOS 风格组件
+                    code_text = '<br/>'.join(code_content).replace(' ', '&nbsp;')
+                    macos_widget = (
+                        '<section style="margin: 20px 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); border-radius: 8px; overflow: hidden; background: #282c34;">'
+                        '<section style="display: flex; align-items: center; padding: 12px; background: #21252b;">'
+                        '<span style="width: 12px; height: 12px; border-radius: 50%; background: #ff5f56; margin-right: 8px;"></span>'
+                        '<span style="width: 12px; height: 12px; border-radius: 50%; background: #ffbd2e; margin-right: 8px;"></span>'
+                        '<span style="width: 12px; height: 12px; border-radius: 50%; background: #27c93f;"></span>'
+                        '</section>'
+                        f'<section style="padding: 15px; color: #abb2bf; font-size: 13px; line-height: 1.6; overflow-x: auto; white-space: pre !important; font-family: Consolas, Monaco, monospace;">'
+                        f'{code_text}'
+                        '</section>'
+                        '</section>'
+                    )
+                    html_parts.append(macos_widget)
+                    code_content = []
+                    continue
+            
+            if in_code_block:
+                # 保持原始行内容（含缩进），转义 HTML 特殊字符
+                code_content.append(line.replace('<', '&lt;').replace('>', '&gt;'))
+                continue
+            # ---------------------------
+            
             line = line.strip()
             if not line:
                 continue
