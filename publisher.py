@@ -346,93 +346,83 @@ class WeChatPublisher:
     
     def _markdown_to_html(self, markdown: str) -> str:
         """
-        Markdown 转微信兼容 HTML（纯内联样式）
-        
-        支持：
-        - 标题（h1, h2, h3）
-        - 段落
-        - 粗体、斜体
-        - 引用块
-        - 无序列表
-        - 代码块（简单处理）
-        
-        Args:
-            markdown: Markdown 格式字符串
-            
-        Returns:
-            微信兼容的 HTML 字符串（纯内联样式）
+        核心渲染函数：14px 苹果细圆体 + MacOS 无阴影代码块 (物理隔离法)
+        针对年轻受众优化的最终对齐版本，保持代码缩进并支持横向滑动
         """
         lines = markdown.split('\n')
         html_parts = []
-
-# --- 新增模块变量：状态追踪 ---
         in_code_block = False
         code_content = []
-# --------------------------
+
+        # 【样式定义】14px 苹果细圆体正文
+        body_style = (
+            'font-family: "PingFang SC", "STHeiti", "Microsoft YaHei", sans-serif; '
+            'font-size: 14px; color: #333333; line-height: 1.7; letter-spacing: 0.5px; '
+            'margin: 12px 0; text-align: justify; -webkit-font-smoothing: antialiased;'
+        )
+
         for line in lines:
-            # --- 新增逻辑：代码块优先拦截 ---
+            raw_line = line 
             stripped_line = line.strip()
+
+            # 1. 处理代码块 (拦截 ```)
             if stripped_line.startswith('```'):
                 if not in_code_block:
                     in_code_block = True
                     continue
                 else:
                     in_code_block = False
-                    # 封装为 MacOS 风格组件
-                    code_text = '<br/>'.join(code_content).replace(' ', '&nbsp;')
+                    formatted_rows = []
+                    for code_row in code_content:
+                        safe_row = code_row.replace('<', '&lt;').replace('>', '&gt;').replace(' ', '&nbsp;')
+                        row_html = (
+                            f'<p style="margin: 0; padding: 0 20px; white-space: nowrap !important; line-height: 1.8;">'
+                            f'<code style="font-family: Menlo, Monaco, monospace; font-size: 12px; color: #abb2bf;">{safe_row}</code>'
+                            f'</p>'
+                        )
+                        formatted_rows.append(row_html)
+                    
+                    code_text = ''.join(formatted_rows)
                     macos_widget = (
-                        '<section style="margin: 20px 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); border-radius: 8px; overflow: hidden; background: #282c34;">'
-                        '<section style="display: flex; align-items: center; padding: 12px; background: #21252b;">'
-                        '<span style="width: 12px; height: 12px; border-radius: 50%; background: #ff5f56; margin-right: 8px;"></span>'
-                        '<span style="width: 12px; height: 12px; border-radius: 50%; background: #ffbd2e; margin-right: 8px;"></span>'
-                        '<span style="width: 12px; height: 12px; border-radius: 50%; background: #27c93f;"></span>'
+                        '<section style="margin: 20px 0; border-radius: 8px; overflow: hidden; background: #282c34; border: 1px solid #1b1d23;">'
+                        '<section style="display: flex; padding: 12px; background: #21252b;">'
+                        '<svg width="54" height="12"><circle cx="6" cy="6" r="6" fill="#ff5f56"/><circle cx="26" cy="6" r="6" fill="#ffbd2e"/><circle cx="46" cy="6" r="6" fill="#27c93f"/></svg>'
                         '</section>'
-                        f'<section style="padding: 15px; color: #abb2bf; font-size: 13px; line-height: 1.6; overflow-x: auto; white-space: pre !important; font-family: Consolas, Monaco, monospace;">'
+                        f'<section style="padding: 10px 0 10px 0; overflow-x: auto; -webkit-overflow-scrolling: touch;">'
                         f'{code_text}'
-                        '</section>'
-                        '</section>'
+                        '</section></section>'
                     )
                     html_parts.append(macos_widget)
                     code_content = []
                     continue
-            
+
+            # 2. 收集代码块内部内容
             if in_code_block:
-                # 保持原始行内容（含缩进），转义 HTML 特殊字符
-                code_content.append(line.replace('<', '&lt;').replace('>', '&gt;'))
+                code_content.append(raw_line)
                 continue
-            # ---------------------------
-            
-            line = line.strip()
-            if not line:
+
+            # 3. 处理普通 Markdown 逻辑
+            if not stripped_line:
                 continue
-            
-            # 标题
-            if line.startswith('# '):
-                title = line[2:]
-                html_parts.append(f'<section style="font-size:20px;font-weight:bold;margin:20px 0 10px;color:#333;">{title}</section>')
-            elif line.startswith('## '):
-                subtitle = line[3:]
-                html_parts.append(f'<section style="font-size:18px;font-weight:bold;margin:16px 0 8px;color:#333;">{subtitle}</section>')
-            elif line.startswith('### '):
-                subtitle = line[4:]
-                html_parts.append(f'<section style="font-size:16px;font-weight:bold;margin:12px 0 6px;color:#333;">{subtitle}</section>')
-            # 引用
-            elif line.startswith('> '):
-                quote = line[2:]
-                html_parts.append(f'<section style="border-left:4px solid #ddd;padding-left:12px;margin:12px 0;color:#666;font-style:italic;">{quote}</section>')
-            # 列表
-            elif line.startswith('- ') or line.startswith('* '):
-                item = line[2:]
-                html_parts.append(f'<section style="margin:6px 0;padding-left:20px;">• {item}</section>')
-            # 普通段落
+
+            if stripped_line.startswith('# '):
+                title = stripped_line[2:]
+                html_parts.append(f'<h2 style="font-family: \'PingFang SC\'; font-size: 18px; margin: 24px 0 12px; color: #000; font-weight: bold;">{title}</h2>')
+            elif stripped_line.startswith('## '):
+                subtitle = stripped_line[3:]
+                html_parts.append(f'<h3 style="font-family: \'PingFang SC\'; font-size: 16px; margin: 20px 0 10px; color: #000; font-weight: bold;">{subtitle}</h3>')
+            elif stripped_line.startswith('> '):
+                quote = stripped_line[2:]
+                html_parts.append(f'<section style="border-left:4px solid #ddd; padding-left:12px; margin:12px 0; color:#666; font-style:italic; font-size:14px;">{quote}</section>')
+            elif stripped_line.startswith('- ') or stripped_line.startswith('* '):
+                item = stripped_line[2:]
+                html_parts.append(f'<section style="{body_style}">• {item}</section>')
             else:
-                # 处理粗体和斜体
-                line = line.replace('**', '</strong><strong>')
-                line = line.replace('*', '</em><em>')
-                html_parts.append(f'<section style="font-size:17px;line-height:1.75;color:#333;margin:12px 0;word-break:break-word;">{line}</section>')
-        
+                processed_line = stripped_line.replace('**', '<strong>', 1).replace('**', '</strong>', 1)
+                html_parts.append(f'<section style="{body_style}">{processed_line}</section>')
+
         return '\n'.join(html_parts)
-    
+        
     def upload_default_cover(self) -> Optional[str]:
         """
         上传默认封面图（900x500 像素，微信要求最小 200x200）
